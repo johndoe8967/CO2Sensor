@@ -45,6 +45,7 @@ void IP_info();
 
 
 // MQTT client settings
+#include "CredetialSettings.h"
 EspMQTTClient MQTTClient(
   MQTTHostname,     // MQTT Broker server ip
   MQTTPort,         // The MQTT port, default to 1883. this line can be omitted
