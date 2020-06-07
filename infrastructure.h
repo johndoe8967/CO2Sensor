@@ -1,4 +1,3 @@
-
 /*
    Header for infrastructe
    - OTA
@@ -35,7 +34,7 @@
 #ifndef disableRemoteDebug
 #include <RemoteDebugger.h>
 RemoteDebug Debug;
-void setupRemoteDebug(char* hostname) {
+void setupRemoteDebug(const char* hostname) {
     Debug.begin(hostname);
 
 }

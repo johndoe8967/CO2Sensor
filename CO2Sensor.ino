@@ -47,19 +47,21 @@ void setup()
 {
   Serial.begin(115200);
   Serial.println("Booting");
-  
+
   wifiInit();       // get WiFi connected
   IP_info();
 
   setupOTA();
-  setupRemoteDebug("CO2Sensor.local");  
+  String hostname = MQTTClientName;
+  hostname += ".local";
+  setupRemoteDebug(hostname.c_str());
 
   MQTTClient.enableDebuggingMessages(); // Enable debugging messages sent to serial output
-  MQTTClient.enableLastWillMessage("CO2Sensor/lastwill", "I am going offline");  // You can activate the retain flag by setting the third parameter to true
+  MQTTClient.enableLastWillMessage("device/lastwill", MQTTClientName);
 
   // Setup MH-Z19 CO2 Sensor over serial interface
-  mySerial.begin(BAUDRATE, SERIAL_8N1, RX_PIN, TX_PIN); // (ESP32 Example) device to MH-Z19 serial start   
-  myMHZ19.begin(mySerial);                                // *Serial(Stream) refence must be passed to library begin(). 
+  mySerial.begin(BAUDRATE, SERIAL_8N1, RX_PIN, TX_PIN); // (ESP32 Example) device to MH-Z19 serial start
+  myMHZ19.begin(mySerial);                                // *Serial(Stream) refence must be passed to library begin().
   myMHZ19.autoCalibration();                              // Turn auto calibration ON (OFF autoCalibration(false))
 }
 
@@ -67,19 +69,21 @@ void setup()
 void onConnectionEstablished()
 {
   // Subscribe to "mytopic/test" and display received message to Serial
-  MQTTClient.subscribe("CO2Sensor/Update", [](const String & payload) {
-    debugD("Received message: %s",payload.c_str());
-    
-    const int capacity = JSON_OBJECT_SIZE(3) + 2*JSON_OBJECT_SIZE(1); 
+  String topic = MQTTClientName;
+  topic += "/Update";
+  MQTTClient.subscribe(topic, [](const String & payload) {
+    debugD("Received message: %s", payload.c_str());
+
+    const int capacity = JSON_OBJECT_SIZE(3) + 2 * JSON_OBJECT_SIZE(1);
     StaticJsonDocument<capacity> doc;
     DeserializationError err = deserializeJson(doc, payload);
-    if (err) { 
-      debugD("deserializeJson() failed with code %s",err.c_str());
+    if (err) {
+      debugD("deserializeJson() failed with code %s", err.c_str());
     }
 
     if (doc.containsKey("Intervall")) {
       auto receivedVal = doc["Intervall"].as<unsigned long>();
-      debugD("Received Intervall: %lu",receivedVal);
+      debugD("Received Intervall: %lu", receivedVal);
       if ((receivedVal > 1000) && (receivedVal < 3600000)) {
         updateIntervall = receivedVal;
       }
@@ -87,6 +91,12 @@ void onConnectionEstablished()
     if (doc.containsKey("Debug")) {
       MQTTClient.enableDebuggingMessages(doc["Debug"].as<bool>());
       debugD("Received MQTTDebug over Serial");
+    }
+  });
+  MQTTClient.subscribe("device/#", [](const String & topic, const String & payload) {
+    if ((topic == "device/scan") && (payload == "scan")) {
+      debugD("Received device scan");
+      MQTTClient.publish("device/scan", MQTTClientName); 
     }
   });
 
@@ -102,17 +112,17 @@ void loop()
   timeValid = timeClient.update();
   if (!lastTimeValid && timeValid) {
     timeValid = true;
-    debugA("Got new Time: %s",timeClient.getFormattedTime());
+    debugA("Got new Time: %s", timeClient.getFormattedTime());
   }
   lastTimeValid = timeValid;
-  
+
   if (millis() - getDataTimer >= updateIntervall) {
-    getDataTimer = millis();  
-    
+    getDataTimer = millis();
+
     CO2 = myMHZ19.getCO2(true);                             // Request CO2 (as ppm)
-    CO2uncorrected = myMHZ19.getCO2(false);        
+    CO2uncorrected = myMHZ19.getCO2(false);
     Temp = myMHZ19.getTemperature();                     // Request Temperature (as Celsius)
-  
+
     if (MQTTClient.isConnected()) {
       String strTime = "";
       unsigned int ms = 0;
@@ -121,22 +131,26 @@ void loop()
       milliseconds += ms;
       milliseconds = milliseconds.substring(milliseconds.length() - 3);
       strTime += milliseconds;
-      
+
       // Publish a message to "mytopic/test"
-      message = "[{\"name\":\"CO2Sensor\",\"field\":\"CO2\",\"value\":";
+      message = "[{\"name\":\"";
+      message += MQTTClientName;
+      message += "\",\"field\":\"CO2\",\"value\":";
       message += CO2;
       message += ",\"Temp\":";
-      message += Temp;      
+      message += Temp;
       message += ",\"time\":";
       message += strTime;
       message += "},";
-      
-      message += "{\"name\":\"CO2Sensor\",\"field\":\"CO2uncorrected\",\"value\":";
+
+      message += "{\"name\":\"";
+      message += MQTTClientName;
+      message += "\",\"field\":\"CO2uncorrected\",\"value\":";
       message += CO2uncorrected;
       message += ",\"time\":";
       message += strTime;
       message += "}]";
-      debugD("MQTT Publish: %s",message.c_str());
+      debugD("MQTT Publish: %s", message.c_str());
       MQTTClient.publish("sensors", message); // You can activate the retain flag by setting the third parameter to true
     } else {
       debugD("MQTT not connected");
