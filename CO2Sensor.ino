@@ -7,20 +7,20 @@
 */
 #include "EspMQTTClient.h"
 #include <NTPClient.h>
-#include "MHZ19.h"    
+#include "MHZ19.h"
 #include <ArduinoJson.h>
 #include "infrastructure.h"
 
 
 // Variables for MH Z19B Sensor
-  #define RX_PIN 16                                          // Rx pin which the MHZ19 Tx pin is attached to
-  #define TX_PIN 17                                          // Tx pin which the MHZ19 Rx pin is attached to
-  #define BAUDRATE 9600                                      // Device to MH-Z19 Serial baudrate (should not be changed)
-  HardwareSerial mySerial(2);                              // (ESP32 Example) create device to MH-Z19 serial
-  MHZ19 myMHZ19;                                             // Constructor for library
-  int CO2; 
-  int CO2uncorrected;
-  int Temp;
+#define RX_PIN 16                                          // Rx pin which the MHZ19 Tx pin is attached to
+#define TX_PIN 17                                          // Tx pin which the MHZ19 Rx pin is attached to
+#define BAUDRATE 9600                                      // Device to MH-Z19 Serial baudrate (should not be changed)
+HardwareSerial mySerial(2);                              // (ESP32 Example) create device to MH-Z19 serial
+MHZ19 myMHZ19;                                             // Constructor for library
+int CO2;
+int CO2uncorrected;
+int Temp;
 
 
 // MQTT client settings
@@ -68,35 +68,44 @@ void setup()
 // This function is called once everything is connected (Wifi and MQTT)
 void onConnectionEstablished()
 {
-  // Subscribe to "mytopic/test" and display received message to Serial
-  String topic = MQTTClientName;
-  topic += "/Update";
-  MQTTClient.subscribe(topic, [](const String & payload) {
-    debugD("Received message: %s", payload.c_str());
+  MQTTClient.subscribe("CO2Sensor/#", [](const String & topic, const String & payload) {
+    debugD("Received message: %s,%s", topic.c_str(), payload.c_str());
+    if (topic == "CO2Sensor/update") {
 
-    const int capacity = JSON_OBJECT_SIZE(3) + 2 * JSON_OBJECT_SIZE(1);
-    StaticJsonDocument<capacity> doc;
-    DeserializationError err = deserializeJson(doc, payload);
-    if (err) {
-      debugD("deserializeJson() failed with code %s", err.c_str());
-    }
+      const int capacity = JSON_OBJECT_SIZE(3) + 2 * JSON_OBJECT_SIZE(1);
+      StaticJsonDocument<capacity> doc;
+      DeserializationError err = deserializeJson(doc, payload);
+      if (err) {
+        debugD("deserializeJson() failed with code %s", err.c_str());
+      }
 
-    if (doc.containsKey("Intervall")) {
-      auto receivedVal = doc["Intervall"].as<unsigned long>();
-      debugD("Received Intervall: %lu", receivedVal);
-      if ((receivedVal > 1000) && (receivedVal < 3600000)) {
-        updateIntervall = receivedVal;
+      if (doc.containsKey("Intervall")) {
+        auto receivedVal = doc["Intervall"].as<unsigned long>();
+        debugD("Received Intervall: %lu", receivedVal);
+        if ((receivedVal > 1000) && (receivedVal < 3600000)) {
+          updateIntervall = receivedVal;
+        }
+      }
+      if (doc.containsKey("Debug")) {
+        MQTTClient.enableDebuggingMessages(doc["Debug"].as<bool>());
+        debugD("Received MQTTDebug over Serial");
       }
     }
-    if (doc.containsKey("Debug")) {
-      MQTTClient.enableDebuggingMessages(doc["Debug"].as<bool>());
-      debugD("Received MQTTDebug over Serial");
+    if (topic == "CO2Sensor/commands") {
+      if (payload == "getCommands") {
+        debugD("Received get commands");
+        String commands = "{\"commands\":[{\"cmd\":\"Intervall\",\"type\":\"float\",\"min\":1000,\"max\":3600000},{\"cmd\":\"Debug\",\"type\":\"bool\"}]}";
+        MQTTClient.publish("CO2Sensor/commands", commands);
+      }
     }
+
   });
   MQTTClient.subscribe("device/#", [](const String & topic, const String & payload) {
-    if ((topic == "device/scan") && (payload == "scan")) {
-      debugD("Received device scan");
-      MQTTClient.publish("device/scan", MQTTClientName); 
+    if (topic == "device/scan") {
+      if (payload == "scan") {
+        debugD("Received device scan");
+        MQTTClient.publish("device/scan", MQTTClientName);
+      }
     }
   });
 
