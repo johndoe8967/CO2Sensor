@@ -72,6 +72,7 @@ void setup()
 // This function is called once everything is connected (Wifi and MQTT)
 void onConnectionEstablished()
 {
+  MQTTClient.publish("device/online", "CO2Sensor");
   MQTTClient.subscribe("CO2Sensor/#", [](const String & topic, const String & payload) {
     debugD("Received message: %s,%s", topic.c_str(), payload.c_str());
     if (topic == "CO2Sensor/update") {
