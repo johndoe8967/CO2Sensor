@@ -186,6 +186,11 @@ void wifiInit()  //
      Serial.printf(".");
      ++WLcount;
    }
+   if (WiFi.status() != WL_CONNECTED) {
+        initSmartConfig(); 
+        delay( 3000);
+        ESP.restart();   // reboot with wifi configured
+   }
   delay( 3000 );
 
   //  stop the led flasher here
