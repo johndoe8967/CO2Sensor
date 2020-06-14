@@ -194,7 +194,11 @@ void loop()
       debugD("MQTT Publish: %s", message.c_str());
       MQTTClient.publish("sensors", message); // You can activate the retain flag by setting the third parameter to true
     } else {
-      debugE("MQTT not connected");
+      if (!timeValid) {
+        debugE("Time not valid");
+      } else {
+        debugE("MQTT not connected");
+      }
     }
   }
 }
