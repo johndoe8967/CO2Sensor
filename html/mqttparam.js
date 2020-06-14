@@ -68,14 +68,20 @@ function onMessageArrived(message) {
 	if (message.destinationName == "device/scan") {
 		document.getElementById("messages").innerHTML += '<span>Topic: ' + message.destinationName + '  | ' + message.payloadString + '</span><br/>';		
 		console.log(devicelist);
-		if (devicelist.includes(message.payloadString)) {
+		var deviceName = message.payloadString;
+		if (devicelist.includes(deviceName)) {
 			console.log("already scanned device" + message.payloadString);
 		} else {
-			console.log("add new device" + message.payloadString);
-			devicelist.push(message.payloadString);
-			client.subscribe(message.payloadString + "/commands");
+			console.log("add new device" + deviceName);
+			document.getElementById("devices").innerHTML += '<span>' + deviceName + '</span><br/>';
+			document.getElementById("devices").innerHTML += '<div id="'+deviceName+'"></div>';
+			var element = document.getElementById(deviceName);
+			element.classList.add("devices");
+
+			devicelist.push(deviceName);
+			client.subscribe(deviceName + "/commands");
 			var getCommands = new Paho.MQTT.Message("getCommands");
-			getCommands.destinationName = message.payloadString;
+			getCommands.destinationName = deviceName;
 			getCommands.qos = 0;
 			client.send(getCommands);
 		}
@@ -87,11 +93,11 @@ function onMessageArrived(message) {
 			console.log(cmd);
 			
 			if (cmd.type == "bool") {
-				document.getElementById("devices").innerHTML += '<input id="'+cmd.cmd+'" type="checkbox" name="'+device+'.'+cmd.cmd+'" onchange="sendParameter(this)" value="0">';				
-				document.getElementById("devices").innerHTML += '<label for="'+cmd.cmd+'">'+cmd.cmd+'</label><br><br>';
+				document.getElementById(device).innerHTML += '<b>' + cmd.cmd + '</b>';
+				document.getElementById(device).innerHTML += '<input id="'+cmd.cmd+'" type="checkbox" name="'+device+'.'+cmd.cmd+'" onchange="sendParameter(this)" value="0"><br/>';				
 			} else {
-				document.getElementById("devices").innerHTML += '<span>' + cmd.cmd + '</span><br/>';
-				document.getElementById("devices").innerHTML += '<input id="'+cmd.cmd+'" type="text" name="'+device+'.'+cmd.cmd+'" onchange="sendParameter(this)" value="0"><br><br>';
+				document.getElementById(device).innerHTML += '<b>' + cmd.cmd + '</b>';
+				document.getElementById(device).innerHTML += '<input id="'+cmd.cmd+'" type="text" name="'+device+'.'+cmd.cmd+'" onchange="sendParameter(this)" value="'+cmd.value+'"><br/>';
 			}
 		}
 	}
