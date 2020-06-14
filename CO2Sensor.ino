@@ -79,7 +79,9 @@ void onConnectionEstablished()
 
     if (payload == "getCommands") {
       debugD("Received get commands");
-      String commands = "{\"commands\":[{\"cmd\":\"Intervall\",\"type\":\"integer\",\"min\":1000,\"max\":3600000},{\"cmd\":\"Debug\",\"type\":\"bool\"}]}";
+      String commands = "{\"commands\":[{\"cmd\":\"Intervall\",\"type\":\"integer\",\"min\":1000,\"max\":3600000,\"value\":";
+      commands += updateIntervall;
+      commands += "},{\"cmd\":\"Debug\",\"type\":\"bool\"}]}";
       MQTTClient.publish("CO2Sensor/commands", commands);
     } else if (payload == "info") {
       debugD("Received info command");
