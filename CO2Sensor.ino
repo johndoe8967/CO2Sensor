@@ -11,7 +11,7 @@
 #include <ArduinoJson.h>
 #include "infrastructure.h"
 
-#define SWVersion "CO2Sensor V1.0"
+#define SWVersion "CO2Sensor V1.1"
 
 // Variables for MH Z19B Sensor
 #define RX_PIN 16                                          // Rx pin which the MHZ19 Tx pin is attached to
@@ -46,6 +46,7 @@ unsigned long updateIntervall = 10000;
 String message;
 bool timeValid = false;
 bool lastTimeValid = false;
+unsigned long heartbeat = 0;
 
 void setup()
 {
@@ -73,10 +74,24 @@ void setup()
 void onConnectionEstablished()
 {
   MQTTClient.publish("device/online", "CO2Sensor");
-  MQTTClient.subscribe("CO2Sensor/#", [](const String & topic, const String & payload) {
-    debugD("Received message: %s,%s", topic.c_str(), payload.c_str());
-    if (topic == "CO2Sensor/update") {
+  MQTTClient.subscribe("CO2Sensor", [](const String & payload) {
+    debugD("Received message: %s", payload.c_str());
 
+    if (payload == "getCommands") {
+      debugD("Received get commands");
+      String commands = "{\"commands\":[{\"cmd\":\"Intervall\",\"type\":\"integer\",\"min\":1000,\"max\":3600000},{\"cmd\":\"Debug\",\"type\":\"bool\"}]}";
+      MQTTClient.publish("CO2Sensor/commands", commands);
+    } else if (payload == "info") {
+      debugD("Received info command");
+      char SensorVersion[5] = {0, 0, 0, 0, 0};
+      myMHZ19.getVersion(SensorVersion);
+      String info = "{\"version\":\"";
+      info += SWVersion;
+      info += "\",\"Sensor\":\"MH-Z19b V";
+      info += SensorVersion;
+      info += "\"}";
+      MQTTClient.publish("CO2Sensor/info", info);
+    } else {
       const int capacity = JSON_OBJECT_SIZE(3) + 2 * JSON_OBJECT_SIZE(1);
       StaticJsonDocument<capacity> doc;
       DeserializationError err = deserializeJson(doc, payload);
@@ -94,37 +109,16 @@ void onConnectionEstablished()
       if (doc.containsKey("Debug")) {
         MQTTClient.enableDebuggingMessages(doc["Debug"].as<bool>());
         debugD("Received MQTTDebug over Serial");
-      }
-    }
-    if (topic == "CO2Sensor/commands") {
-      if (payload == "getCommands") {
-        debugD("Received get commands");
-        String commands = "{\"commands\":[{\"cmd\":\"Intervall\",\"type\":\"float\",\"min\":1000,\"max\":3600000},{\"cmd\":\"Debug\",\"type\":\"bool\"}]}";
-        MQTTClient.publish("CO2Sensor/commands", commands);
-      }
-      if (payload == "info") {
-        debugD("Received info command");
-        char SensorVersion[5]={0,0,0,0,0};
-        myMHZ19.getVersion(SensorVersion);
-        String info = "{\"version\":\"";
-        info += SWVersion;
-        info += "\",\"Sensor\":\"MH-Z19b V";
-        info += SensorVersion;
-        info += "\"}";
-        MQTTClient.publish("CO2Sensor/commands", info);
-      }
-    }
-
-  });
-  MQTTClient.subscribe("device/#", [](const String & topic, const String & payload) {
-    if (topic == "device/scan") {
-      if (payload == "scan") {
-        debugD("Received device scan");
-        MQTTClient.publish("device/scan", MQTTClientName);
-      }
+      }      
     }
   });
-
+  
+  MQTTClient.subscribe("device", [](const String & payload) {
+    if (payload == "scan") {
+      debugD("Received device scan");
+      MQTTClient.publish("device/scan", MQTTClientName);
+    }
+  });
   timeClient.begin();
 }
 
@@ -149,16 +143,16 @@ void loop()
     CO2Raw = myMHZ19.getCO2Raw();
     Temp = myMHZ19.getTemperature(true);                    // Request Temperature as float (as Celsius)
     Accuracy = myMHZ19.getAccuracy();
-    
+
     if (myMHZ19.errorCode != RESULT_OK) {
-      debugE("Error from MHZ19: %u",myMHZ19.errorCode);
+      debugE("Error from MHZ19: %u", myMHZ19.errorCode);
     }
 
     if (timeClient.getEpochTime() < 1500000000) {
       debugE("not a valid time");
       timeValid = false;
     }
-    
+
     if (timeValid && MQTTClient.isConnected()) {
       String strTime = "";
       unsigned int ms = 0;
@@ -169,7 +163,7 @@ void loop()
       strTime += milliseconds;
 
       // Publish a message to "mytopic/test"
-      message = "{\"name\":\"";
+      message = "[{\"name\":\"";
       message += MQTTClientName;
       message += "\",\"field\":\"CO2\",\"value\":";
       message += CO2;
@@ -185,7 +179,15 @@ void loop()
       message += WiFi.RSSI();
       message += ",\"time\":";
       message += strTime;
-      message += "}";
+      message += "},";
+      message += "{\"name\":\"";
+      message += MQTTClientName;
+      message += "\",\"field\":\"Heartbeat\",\"value\":";
+      message += heartbeat++;
+      message += ",\"time\":";
+      message += strTime;
+      message += "}]";
+
 
       debugD("MQTT Publish: %s", message.c_str());
       MQTTClient.publish("sensors", message); // You can activate the retain flag by setting the third parameter to true
