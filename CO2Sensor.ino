@@ -152,6 +152,7 @@ void loop()
 
     if (timeClient.getEpochTime() < 1500000000) {
       debugE("not a valid time");
+      timeClient.forceUpdate();
       timeValid = false;
     }
 
@@ -196,6 +197,7 @@ void loop()
     } else {
       if (!timeValid) {
         debugE("Time not valid");
+        timeClient.forceUpdate();
       } else {
         debugE("MQTT not connected");
       }
