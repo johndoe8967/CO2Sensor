@@ -39,7 +39,7 @@ EspMQTTClient MQTTClient(
 
 // Network Time
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP);
+NTPClient timeClient(ntpUDP,"0.at.pool.ntp.org");
 
 unsigned long getDataTimer = 0;
 unsigned long updateIntervall = 10000;
@@ -111,10 +111,10 @@ void onConnectionEstablished()
       if (doc.containsKey("Debug")) {
         MQTTClient.enableDebuggingMessages(doc["Debug"].as<bool>());
         debugD("Received MQTTDebug over Serial");
-      }      
+      }
     }
   });
-  
+
   MQTTClient.subscribe("device", [](const String & payload) {
     if (payload == "scan") {
       debugD("Received device scan");
