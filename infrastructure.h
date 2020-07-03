@@ -32,7 +32,8 @@
 #define __BasicInfrastructure
 
 #ifndef disableRemoteDebug
-#include <RemoteDebugger.h>
+#define MAX_TIME_INACTIVE 0
+#include <RemoteDebug.h>
 RemoteDebug Debug;
 void setupRemoteDebug(const char* hostname) {
     Debug.begin(hostname);
