@@ -42,7 +42,7 @@ WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP,"0.at.pool.ntp.org");
 
 unsigned long getDataTimer = 0;
-unsigned long updateIntervall = 10000;
+unsigned long updateIntervall = 5000;
 String message;
 bool timeValid = false;
 bool lastTimeValid = false;
@@ -79,7 +79,7 @@ void onConnectionEstablished()
 
     if (payload == "getCommands") {
       debugD("Received get commands");
-      String commands = "{\"commands\":[{\"cmd\":\"Intervall\",\"type\":\"integer\",\"min\":1000,\"max\":3600000,\"value\":";
+      String commands = "{\"commands\":[{\"cmd\":\"Intervall\",\"type\":\"integer\",\"min\":5000,\"max\":3600000,\"value\":";
       commands += updateIntervall;
       commands += "},{\"cmd\":\"Debug\",\"type\":\"bool\"}]}";
       MQTTClient.publish("CO2Sensor/commands", commands);
