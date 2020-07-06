@@ -135,8 +135,8 @@ void loop()
   MQTTClient.loop();
 
 
-  if (millis() - ntpUpdateTimer >= NTPUpdateIntervall) {
-    ntpUpdateTimer += NTPUpdateIntervall;
+  if (millis() - ntpUpdateTimer >= 2000) {
+    ntpUpdateTimer += 2000;
     if (timeClient.getEpochTime() < 1500000000) {
       debugE("not a valid time: %lu %s", timeClient.getEpochTime(), timeClient.getFormattedTime());
       timeValid = false;
