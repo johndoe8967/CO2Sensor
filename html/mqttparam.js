@@ -63,6 +63,7 @@ function onConnectionLost(responseObject) {
 function onMessageArrived(message) {
 	//guess device from topic. Format <device>/<command>
 	var device = message.destinationName.substr(0,message.destinationName.indexOf("/"));
+	var command = message.destinationName.substr(message.destinationName.indexOf("/"),message.destinationName.length)
 	
 	//message is a scan response from clients on "device/scan"?
 	if (message.destinationName == "device/scan") {
@@ -94,19 +95,26 @@ function onMessageArrived(message) {
 		} else {
 			console.log("already scanned device" + message.payloadString);
 		}
-	} else if (devicelist.includes(device)) {
-		console.log("add commands");
+	} else 
+		//message is a response on a "getCommand" from a known device
+		if (command = "commands" && devicelist.includes(device)) {
+		//debug output on site
 		document.getElementById("messages").innerHTML += '<span>Topic: ' + message.destinationName + '  | ' + message.payloadString + '</span><br/>';
+		
+		//parse json response for valid commands
 		var cmds = JSON.parse(message.payloadString);
-		for (var cmd of cmds.commands) {
-			console.log(cmd);
-			
-			if (cmd.type == "bool") {
-				document.getElementById(device).innerHTML += '<b>' + cmd.cmd + '</b>';
-				document.getElementById(device).innerHTML += '<input id="'+cmd.cmd+'" type="checkbox" name="'+device+'.'+cmd.cmd+'" onchange="sendParameter(this)" value="0"><br/>';				
-			} else {
-				document.getElementById(device).innerHTML += '<b>' + cmd.cmd + '</b>';
-				document.getElementById(device).innerHTML += '<input id="'+cmd.cmd+'" type="text" name="'+device+'.'+cmd.cmd+'" onchange="sendParameter(this)" value="'+cmd.value+'"><br/>';
+		//iterate on commands
+		for (var cmd of cmds.commands) {			
+			//type specific behaviour of command
+			switch (cmd.type) {
+				case "bool":
+					document.getElementById(device).innerHTML += '<b>' + cmd.cmd + '</b>';
+					document.getElementById(device).innerHTML += '<input id="'+cmd.cmd+'" type="checkbox" name="'+device+'.'+cmd.cmd+'" onchange="sendParameter(this)" value="0"><br/>';				
+					break;
+				case "integer":
+					document.getElementById(device).innerHTML += '<b>' + cmd.cmd + '</b>';
+					document.getElementById(device).innerHTML += '<input id="'+cmd.cmd+'" type="text" name="'+device+'.'+cmd.cmd+'" onchange="sendParameter(this)" value="'+cmd.value+'"><br/>';
+					break;
 			}
 		}
 	}
@@ -116,6 +124,7 @@ function onMessageArrived(message) {
 	}
 }
 
+//send parameter to device input has to be a valid input item on site
 function sendParameter(input) {
 	var parameter ={};
 	var parameterName = input.name.substring(input.name.indexOf(".")+1,input.name.length);
@@ -128,7 +137,6 @@ function sendParameter(input) {
 		value = input.value;
 		parameter[parameterName] = parseInt(value);
 	}
-	console.log("now send"+input.name+" "+value);
 	var destination = input.name.substring(0,input.name.indexOf("."));
 	var myMessagepayload = JSON.stringify(parameter);
 	var sendUpdate = new Paho.MQTT.Message(myMessagepayload);
