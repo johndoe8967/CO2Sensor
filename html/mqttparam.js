@@ -1,4 +1,4 @@
-// Called after form input is processed
+// initiate mqtt connection, called by connect button
 function startConnect() {
 	devicelist =[];
     // Generate a random client ID
@@ -27,15 +27,16 @@ function startConnect() {
     });
 }
 
+// rescan all devices, called by rescan button
 function rescan() {
-	// Publish a Message
+	// Publish scan message to all devices 
 	var message = new Paho.MQTT.Message("scan");
 	message.destinationName = "device";
 	message.qos = 0;
 	client.send(message);	
 }
 
-// Called when the client connects
+// Called when the client connects to the mqtt broker
 function onConnect() {
     // Fetch the MQTT topic from the form
     topic = document.getElementById("topic").value;
@@ -45,12 +46,9 @@ function onConnect() {
 
     // Subscribe to the requested topic
     client.subscribe(topic);
-	client.subscribe("device/scan");
-	// Publish a Message
-	var message = new Paho.MQTT.Message("scan");
-	message.destinationName = "device";
-	message.qos = 0;
-	client.send(message);
+	
+	client.subscribe("device/scan");	
+	rescan();
 }
 
 // Called when the client loses its connection
