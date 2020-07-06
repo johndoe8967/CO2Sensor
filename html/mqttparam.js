@@ -61,27 +61,38 @@ function onConnectionLost(responseObject) {
 
 // Called when a message arrives
 function onMessageArrived(message) {
+	//guess device from topic. Format <device>/<command>
 	var device = message.destinationName.substr(0,message.destinationName.indexOf("/"));
-//	console.log("onMessageArrived: " + message.payloadString);
+	
+	//message is a scan response from clients on "device/scan"?
 	if (message.destinationName == "device/scan") {
+		//debug output on site
 		document.getElementById("messages").innerHTML += '<span>Topic: ' + message.destinationName + '  | ' + message.payloadString + '</span><br/>';		
-		console.log(devicelist);
+		
+		//get device name from response
 		var deviceName = message.payloadString;
-		if (devicelist.includes(deviceName)) {
-			console.log("already scanned device" + message.payloadString);
-		} else {
-			console.log("add new device" + deviceName);
+		//check if device is already known
+		if (!devicelist.includes(deviceName)) {
+			//create new device on site
 			document.getElementById("devices").innerHTML += '<span>' + deviceName + '</span><br/>';
 			document.getElementById("devices").innerHTML += '<div id="'+deviceName+'"></div>';
 			var element = document.getElementById(deviceName);
 			element.classList.add("devices");
 
+			//add device to list of known devices
 			devicelist.push(deviceName);
+			
+			// subscribe commands from new device
 			client.subscribe(deviceName + "/commands");
+			
+			// initiate getCommand on new device
 			var getCommands = new Paho.MQTT.Message("getCommands");
 			getCommands.destinationName = deviceName;
 			getCommands.qos = 0;
 			client.send(getCommands);
+			
+		} else {
+			console.log("already scanned device" + message.payloadString);
 		}
 	} else if (devicelist.includes(device)) {
 		console.log("add commands");
