@@ -39,7 +39,9 @@ EspMQTTClient MQTTClient(
 
 // Network Time
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP,"0.at.pool.ntp.org");
+#define NTPUpdateIntervall 60000
+NTPClient timeClient(ntpUDP, "0.at.pool.ntp.org", 0, NTPUpdateIntervall);
+unsigned long ntpUpdateTimer = 0;
 
 unsigned long getDataTimer = 0;
 unsigned long updateIntervall = 5000;
@@ -122,6 +124,8 @@ void onConnectionEstablished()
     }
   });
   timeClient.begin();
+  getDataTimer = millis();
+  ntpUpdateTimer = millis();
 }
 
 void loop()
@@ -130,33 +134,47 @@ void loop()
   Debug.handle();
   MQTTClient.loop();
 
-  timeValid = timeClient.update();
-  if (!lastTimeValid && timeValid) {
-    timeValid = true;
-    debugA("Got new Time: %s", timeClient.getFormattedTime());
-  }
-  lastTimeValid = timeValid;
 
-  if (millis() - getDataTimer >= updateIntervall) {
-    getDataTimer = millis();
-
-    CO2 = myMHZ19.getCO2(false);                             // Request CO2 (as ppm)
-    CO2unlimited = myMHZ19.getCO2(true);                   // Request CO2 unlimited
-    CO2Raw = myMHZ19.getCO2Raw();
-    Temp = myMHZ19.getTemperature(true);                    // Request Temperature as float (as Celsius)
-    Accuracy = myMHZ19.getAccuracy();
-
-    if (myMHZ19.errorCode != RESULT_OK) {
-      debugE("Error from MHZ19: %u", myMHZ19.errorCode);
-    }
-
+  if (millis() - ntpUpdateTimer >= NTPUpdateIntervall) {
+    ntpUpdateTimer += NTPUpdateIntervall;
     if (timeClient.getEpochTime() < 1500000000) {
-      debugE("not a valid time");
-      timeClient.forceUpdate();
+      debugE("not a valid time: %lu %s", timeClient.getEpochTime(), timeClient.getFormattedTime());
       timeValid = false;
+    } else {
+      timeValid = true;
     }
+
+    if (timeValid) {
+      if (!timeClient.update()) {
+        debugE("update failed: %s", timeClient.getFormattedTime());
+      }
+    } else {
+      if (!timeClient.forceUpdate()) {
+        debugE("forceupdate failed: %s", timeClient.getFormattedTime());
+      }
+    }
+
+    if (!lastTimeValid && timeValid) {
+      debugE("Got new Time: %s", timeClient.getFormattedTime());
+    }
+    lastTimeValid = timeValid;
+  }
+
+  auto newActTime = millis();
+  if (newActTime - getDataTimer >= updateIntervall) {
+    getDataTimer += updateIntervall;
 
     if (timeValid && MQTTClient.isConnected()) {
+      CO2 = myMHZ19.getCO2(false);                             // Request CO2 (as ppm)
+      CO2unlimited = myMHZ19.getCO2(true);                   // Request CO2 unlimited
+      CO2Raw = myMHZ19.getCO2Raw();
+      Temp = myMHZ19.getTemperature(true);                    // Request Temperature as float (as Celsius)
+      Accuracy = myMHZ19.getAccuracy();
+
+      if (myMHZ19.errorCode != RESULT_OK) {
+        debugE("Error from MHZ19: %u", myMHZ19.errorCode);
+      }
+
       String strTime = "";
       unsigned int ms = 0;
       strTime += timeClient.getEpochTime(ms);
@@ -196,8 +214,7 @@ void loop()
       MQTTClient.publish("sensors", message); // You can activate the retain flag by setting the third parameter to true
     } else {
       if (!timeValid) {
-        debugE("Time not valid");
-        timeClient.forceUpdate();
+        debugE("Time not valid: %s", timeClient.getFormattedTime());
       } else {
         debugE("MQTT not connected");
       }
