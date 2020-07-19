@@ -11,6 +11,11 @@
 #include <ArduinoJson.h>
 #include "infrastructure.h"
 
+
+#define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
+#define TIME_TO_SLEEP  10       /* Time ESP32 will go to sleep (in seconds) */
+RTC_DATA_ATTR bool deepSleepEnabled = false;
+
 #define SWVersion "CO2Sensor V1.1"
 
 // Variables for MH Z19B Sensor
@@ -50,6 +55,18 @@ bool timeValid = false;
 bool lastTimeValid = false;
 unsigned long heartbeat = 0;
 
+void processCmdRemoteDebug() {
+  String lastCmd = Debug.getLastCommand();
+  if (lastCmd == "enableSleep") {
+    debugA("* DeepSleep is enabled");
+    deepSleepEnabled = true;
+  }
+  if (lastCmd == "disableSleep") {
+    debugA("* DeepSleep is disabled");
+    deepSleepEnabled = false;
+  }
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -63,6 +80,11 @@ void setup()
   String hostname = MQTTClientName;
   hostname += ".local";
   setupRemoteDebug(hostname.c_str());
+
+  String cmds = "enableSleep - Enable Deep Sleep\n\rdisableSleep - Disable Deep Sleep";
+
+  Debug.setHelpProjectsCmds(cmds);
+  Debug.setCallBackProjectCmds(&processCmdRemoteDebug);
 
   MQTTClient.enableDebuggingMessages(false); // Enable debugging messages sent to serial output
   MQTTClient.enableLastWillMessage("device/lastwill", MQTTClientName);
@@ -213,7 +235,12 @@ void loop()
 
 
       debugD("MQTT Publish: %s", message.c_str());
-      MQTTClient.publish("sensors", message); // You can activate the retain flag by setting the third parameter to true
+      if (MQTTClient.publish("sensors", message)) { // You can activate the retain flag by setting the third parameter to true)
+        if (deepSleepEnabled) {
+          esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+          esp_deep_sleep_start();
+        }
+      }
     } else {
       if (!timeValid) {
         debugE("Time not valid: %s", timeClient.getFormattedTime());
