@@ -54,6 +54,7 @@ void setup()
 {
   Serial.begin(115200);
   Serial.println("Booting");
+  btStop();
 
   wifiInit();       // get WiFi connected
   IP_info();
@@ -75,6 +76,7 @@ void setup()
 // This function is called once everything is connected (Wifi and MQTT)
 void onConnectionEstablished()
 {
+  esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
   MQTTClient.publish("device/online", "CO2Sensor");
   MQTTClient.subscribe("CO2Sensor", [](const String & payload) {
     debugD("Received message: %s", payload.c_str());
@@ -134,9 +136,9 @@ void loop()
   Debug.handle();
   MQTTClient.loop();
 
-
   if (millis() - ntpUpdateTimer >= 2000) {
     ntpUpdateTimer += 2000;
+
     if (timeClient.getEpochTime() < 1500000000) {
       debugE("not a valid time: %lu %s", timeClient.getEpochTime(), timeClient.getFormattedTime());
       timeValid = false;

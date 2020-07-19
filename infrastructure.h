@@ -32,6 +32,7 @@
 #define __BasicInfrastructure
 
 #ifndef disableRemoteDebug
+#include "RemoteDebugCfg.h"
 #include <RemoteDebug.h>
 RemoteDebug Debug;
 void setupRemoteDebug(const char* hostname) {
@@ -110,7 +111,7 @@ void initSmartConfig()
    // start LED flasher
   int loopCounter = 0;
 
-  WiFi.mode( WIFI_AP_STA );       //Init WiFi, start SmartConfig
+  WiFi.mode( WIFI_STA );       //Init WiFi, start SmartConfig
   Serial.printf( "Entering SmartConfig\n" );
 
   WiFi.beginSmartConfig();
@@ -150,7 +151,7 @@ void initSmartConfig()
 
 void wifiInit()  // 
 {
-   WiFi.mode(WIFI_AP_STA);   // required to read NVR before WiFi.begin()
+   WiFi.mode(WIFI_STA);   // required to read NVR before WiFi.begin()
 
    // load credentials from NVR, a little RTOS code here
    wifi_config_t conf;

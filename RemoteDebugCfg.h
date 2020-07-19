@@ -53,7 +53,7 @@
 
 // Disable auto function for debug macros? (uncomment this if not want this)
 //#define DEBUG_DISABLE_AUTO_FUNC true
-
+ 
 // Simple password request - left commented if not need this - 18/07/18
 // Notes:
 // It is very simple feature, only text, no cryptography,
@@ -68,7 +68,7 @@
 // Default: 10 minutes
 // Comment it if you not want this
 // Can be by project, just define it before include this file
-//#define MAX_TIME_INACTIVE 600000
+#define MAX_TIME_INACTIVE 0
 
 // Buffered print write to WiFi -> length of buffer
 // Can be by project, just define it before include this file
@@ -101,7 +101,7 @@
 
 ///// Websocket server to support debug over web browser (RemoteDebugApp)
 // Uncomment this to disable it
-//#define WEBSOCKET_DISABLED true
+#define WEBSOCKET_DISABLED true
 
 ///////////// For RemoteDebugWS ///////////////////
 
