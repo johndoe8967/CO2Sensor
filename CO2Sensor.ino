@@ -1,4 +1,3 @@
-
 /*
   SimpleMQTTClient.ino
   The purpose of this exemple is to illustrate a simple handling of MQTT and Wifi connection.
@@ -11,10 +10,20 @@
 #include <ArduinoJson.h>
 #include "infrastructure.h"
 
+typedef struct Measurements {
+  float CO2;
+  float CO2unlimited;
+  float CO2Raw;
+  float Temp;
+  float Accuracy;
+  unsigned long time;
+  unsigned int ms;
+} Measurement;
 
-#define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  10       /* Time ESP32 will go to sleep (in seconds) */
-RTC_DATA_ATTR bool deepSleepEnabled = false;
+int measureIndex = 0;
+#define maxMeasurements 10
+Measurement measures[maxMeasurements];
+
 
 #define SWVersion "CO2Sensor V1.1"
 
@@ -59,11 +68,9 @@ void processCmdRemoteDebug() {
   String lastCmd = Debug.getLastCommand();
   if (lastCmd == "enableSleep") {
     debugA("* DeepSleep is enabled");
-    deepSleepEnabled = true;
   }
   if (lastCmd == "disableSleep") {
     debugA("* DeepSleep is disabled");
-    deepSleepEnabled = false;
   }
 }
 
@@ -152,6 +159,52 @@ void onConnectionEstablished()
   ntpUpdateTimer = millis();
 }
 
+String createSendString(Measurement measure) {
+  String message = "";
+  String strTime = "";
+  strTime += measure.time;
+  String milliseconds = "000";
+  milliseconds += measure.ms;
+  milliseconds = milliseconds.substring(milliseconds.length() - 3);
+  strTime += milliseconds;
+
+  // Publish a message to "mytopic/test"
+  message = "[{\"name\":\"";
+  message += MQTTClientName;
+  message += "\",\"field\":\"CO2\",\"value\":";
+  message += measure.CO2;
+  message += ",\"CO2unlimited\":";
+  message += measure.CO2unlimited;
+  message += ",\"CO2Raw\":";
+  message += measure.CO2Raw;
+  message += ",\"Temp\":";
+  message += measure.Temp;
+  message += ",\"Accuracy\":";
+  message += measure.Accuracy;
+  message += ",\"RSSI\":";
+  message += WiFi.RSSI();
+  message += ",\"time\":";
+  message += strTime;
+  message += "},";
+  message += "{\"name\":\"";
+  message += MQTTClientName;
+  message += "\",\"field\":\"Heartbeat\",\"value\":";
+  message += heartbeat++;
+  message += ",\"time\":";
+  message += strTime;
+  message += "}]";
+  return message;
+}
+
+void sendMeasurements () {
+  for (int i = 0; i < maxMeasurements; i++) {
+    message = createSendString(measures[i]);
+    debugD("MQTT Publish: %s", message.c_str());
+    if (MQTTClient.publish("sensors", message)) { // You can activate the retain flag by setting the third parameter to true)
+    }
+  }
+}
+
 void loop()
 {
   ArduinoOTA.handle();
@@ -189,58 +242,25 @@ void loop()
     getDataTimer += updateIntervall;
 
     if (timeValid && MQTTClient.isConnected()) {
-      CO2 = myMHZ19.getCO2(false);                             // Request CO2 (as ppm)
-      CO2unlimited = myMHZ19.getCO2(true);                   // Request CO2 unlimited
-      CO2Raw = myMHZ19.getCO2Raw();
-      Temp = myMHZ19.getTemperature(true);                    // Request Temperature as float (as Celsius)
-      Accuracy = myMHZ19.getAccuracy();
+      measures[measureIndex].CO2 = myMHZ19.getCO2(false);                             // Request CO2 (as ppm)
+      measures[measureIndex].CO2unlimited = myMHZ19.getCO2(true);                   // Request CO2 unlimited
+      measures[measureIndex].CO2Raw = myMHZ19.getCO2Raw();
+      measures[measureIndex].Temp = myMHZ19.getTemperature(true);                    // Request Temperature as float (as Celsius)
+      measures[measureIndex].Accuracy = myMHZ19.getAccuracy();
 
       if (myMHZ19.errorCode != RESULT_OK) {
         debugE("Error from MHZ19: %u", myMHZ19.errorCode);
       }
-
-      String strTime = "";
       unsigned int ms = 0;
-      strTime += timeClient.getEpochTime(ms);
-      String milliseconds = "000";
-      milliseconds += ms;
-      milliseconds = milliseconds.substring(milliseconds.length() - 3);
-      strTime += milliseconds;
-
-      // Publish a message to "mytopic/test"
-      message = "[{\"name\":\"";
-      message += MQTTClientName;
-      message += "\",\"field\":\"CO2\",\"value\":";
-      message += CO2;
-      message += ",\"CO2unlimited\":";
-      message += CO2unlimited;
-      message += ",\"CO2Raw\":";
-      message += CO2Raw;
-      message += ",\"Temp\":";
-      message += Temp;
-      message += ",\"Accuracy\":";
-      message += Accuracy;
-      message += ",\"RSSI\":";
-      message += WiFi.RSSI();
-      message += ",\"time\":";
-      message += strTime;
-      message += "},";
-      message += "{\"name\":\"";
-      message += MQTTClientName;
-      message += "\",\"field\":\"Heartbeat\",\"value\":";
-      message += heartbeat++;
-      message += ",\"time\":";
-      message += strTime;
-      message += "}]";
-
-
-      debugD("MQTT Publish: %s", message.c_str());
-      if (MQTTClient.publish("sensors", message)) { // You can activate the retain flag by setting the third parameter to true)
-        if (deepSleepEnabled) {
-          esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-          esp_deep_sleep_start();
-        }
+      measures[measureIndex].time = timeClient.getEpochTime(ms);
+      measures[measureIndex].ms = ms;
+      measureIndex++;
+      debugV("Measure: %d",measureIndex);
+      if (measureIndex >= maxMeasurements) {
+        sendMeasurements();
+        measureIndex = 0;
       }
+
     } else {
       if (!timeValid) {
         debugE("Time not valid: %s", timeClient.getFormattedTime());
