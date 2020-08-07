@@ -10,22 +10,54 @@
 #include <ArduinoJson.h>
 #include "infrastructure.h"
 
+#define debug true
+TaskHandle_t Task1;
+
 typedef struct Measurements {
   float CO2;
+  char CO2Error;
   float CO2unlimited;
+  char CO2unlimitedError;
   float CO2Raw;
+  char CO2RawError;
   float Temp;
+  char TempError;
   float Accuracy;
+  char AccuracyError;
   unsigned long time;
   unsigned int ms;
 } Measurement;
 
-int measureIndex = 0;
-#define maxMeasurements 10
+unsigned int measureIndex = 0;
+unsigned int sendMeasureIndex = 0;
+#define MeasureIndexBits 5
+#define maxMeasurements (1<<MeasureIndexBits)
 Measurement measures[maxMeasurements];
+unsigned int countStoredMeasurements() {
+  if (measureIndex == sendMeasureIndex) {
+    sendMeasureIndex = (measureIndex - 1) & ((1 << MeasureIndexBits) - 1);
+  }
+  if (measureIndex < sendMeasureIndex) {
+    return measureIndex +  maxMeasurements - sendMeasureIndex - 1;
+  } else {
+    return measureIndex - sendMeasureIndex - 1;
+  }
+}
+void incMeasureIndex() {
+  measureIndex++;
+  measureIndex &= ((1 << MeasureIndexBits) - 1);
+}
+void incSendMeasureIndex() {
+  sendMeasureIndex++;
+  sendMeasureIndex &= ((1 << MeasureIndexBits) - 1);
+}
 
+enum sendStates {stopped, tostart, startdelay, started, tostop};
+enum sendStates sendState;
+unsigned long stoptime;
+bool disableSleep = false;
 
-#define SWVersion "CO2Sensor V1.1"
+#define SWVersion "CO2Sensor V1.2"
 
 // Variables for MH Z19B Sensor
 #define RX_PIN 16                                          // Rx pin which the MHZ19 Tx pin is attached to
@@ -38,8 +70,6 @@ int CO2unlimited;
 float CO2Raw;
 float Temp;
 int Accuracy;
-
-
 
 // MQTT client settings
 #include "CredetialSettings.h"
@@ -54,7 +84,7 @@ EspMQTTClient MQTTClient(
 // Network Time
 WiFiUDP ntpUDP;
 #define NTPUpdateIntervall 60000
-NTPClient timeClient(ntpUDP, "0.at.pool.ntp.org", 0, NTPUpdateIntervall);
+NTPClient timeClient(ntpUDP, "0.pool.ntp.org", 0, NTPUpdateIntervall);
 unsigned long ntpUpdateTimer = 0;
 
 unsigned long getDataTimer = 0;
@@ -74,10 +104,32 @@ void processCmdRemoteDebug() {
   }
 }
 
+void startWIFI() {
+  setCpuFrequencyMhz(80);
+#ifdef debug
+  Serial.println("startWIFI");
+#endif
+  wifiInit();
+  IP_info();
+}
+
+void stopWIFI() {
+  setCpuFrequencyMhz(10);
+#ifdef debug
+  Serial.println("stopWIFI");
+#endif
+  WiFi.disconnect();
+}
+
 void setup()
 {
+#ifdef debug
   Serial.begin(115200);
   Serial.println("Booting");
+#endif
+  sendMeasureIndex = (measureIndex - 1) & ((1 << MeasureIndexBits) - 1);
+  sendState = started;
+
   btStop();
 
   wifiInit();       // get WiFi connected
@@ -93,13 +145,24 @@ void setup()
   Debug.setHelpProjectsCmds(cmds);
   Debug.setCallBackProjectCmds(&processCmdRemoteDebug);
 
-  MQTTClient.enableDebuggingMessages(false); // Enable debugging messages sent to serial output
+  MQTTClient.enableDebuggingMessages(debug); // Enable debugging messages sent to serial output
   MQTTClient.enableLastWillMessage("device/lastwill", MQTTClientName);
 
   // Setup MH-Z19 CO2 Sensor over serial interface
   mySerial.begin(BAUDRATE, SERIAL_8N1, RX_PIN, TX_PIN); // (ESP32 Example) device to MH-Z19 serial start
   myMHZ19.begin(mySerial);                                // *Serial(Stream) refence must be passed to library begin().
   myMHZ19.autoCalibration();                              // Turn auto calibration ON (OFF autoCalibration(false))
+
+  //create a task that will be executed in the Task1code() function, with priority 1 and executed on core 0
+  xTaskCreatePinnedToCore(
+    TaskMeasure, /* Task function. */
+    "Measure",     /* name of task. */
+    10000,       /* Stack size of task */
+    NULL,        /* parameter of the task */
+    1,           /* priority of the task */
+    &Task1,      /* Task handle to keep track of created task */
+    0);          /* pin task to core 0 */
+  delay(500);
 }
 
 // This function is called once everything is connected (Wifi and MQTT)
@@ -142,8 +205,13 @@ void onConnectionEstablished()
         }
       }
       if (doc.containsKey("Debug")) {
-        MQTTClient.enableDebuggingMessages(doc["Debug"].as<bool>());
-        debugD("Received MQTTDebug over Serial");
+        disableSleep = doc["Debug"].as<bool>();
+#ifdef debug
+        Serial.print("disable Sleep = ");
+        if (disableSleep) Serial.println("true");
+        else Serial.println("false");
+#endif
+        debugD("Debug: disable Sleep = %s", disableSleep ? "true" : "false");
       }
     }
   });
@@ -171,16 +239,41 @@ String createSendString(Measurement measure) {
   // Publish a message to "mytopic/test"
   message = "[{\"name\":\"";
   message += MQTTClientName;
-  message += "\",\"field\":\"CO2\",\"value\":";
-  message += measure.CO2;
-  message += ",\"CO2unlimited\":";
-  message += measure.CO2unlimited;
-  message += ",\"CO2Raw\":";
-  message += measure.CO2Raw;
-  message += ",\"Temp\":";
-  message += measure.Temp;
-  message += ",\"Accuracy\":";
-  message += measure.Accuracy;
+  if (measure.CO2Error == RESULT_OK ) {
+    message += "\",\"field\":\"CO2\",\"value\":";
+    message += measure.CO2;
+  } else {
+    message += "\",\"field\":\"CO2Error\",\"value\":";
+    message += measure.CO2Error;
+  }
+  if (measure.CO2unlimitedError == RESULT_OK ) {
+    message += ",\"CO2unlimited\":";
+    message += measure.CO2unlimited;
+  } else {
+    message += ",\"CO2unlimitedError\":";
+    message += measure.CO2unlimitedError;
+  }
+  if (measure.CO2RawError == RESULT_OK ) {
+    message += ",\"CO2Raw\":";
+    message += measure.CO2Raw;
+  } else {
+    message += ",\"CO2RawError\":";
+    message += measure.CO2RawError;
+  }
+  if (measure.TempError == RESULT_OK ) {
+    message += ",\"Temp\":";
+    message += measure.Temp;
+  } else {
+    message += ",\"TempError\":";
+    message += measure.TempError;
+  }
+  if (measure.AccuracyError == RESULT_OK ) {
+    message += ",\"Accuracy\":";
+    message += measure.Accuracy;
+  } else {
+    message += ",\"AccuracyError\":";
+    message += measure.AccuracyError;
+  }
   message += ",\"RSSI\":";
   message += WiFi.RSSI();
   message += ",\"time\":";
@@ -196,57 +289,42 @@ String createSendString(Measurement measure) {
   return message;
 }
 
-void sendMeasurements () {
-  for (int i = 0; i < maxMeasurements; i++) {
-    message = createSendString(measures[i]);
-    debugD("MQTT Publish: %s", message.c_str());
-    if (MQTTClient.publish("sensors", message)) { // You can activate the retain flag by setting the third parameter to true)
-    }
+bool sendMeasurement (unsigned int i) {
+  message = createSendString(measures[i]);
+  debugD("MQTT Publish: %s", message.c_str());
+  if (MQTTClient.publish("sensors", message)) { // You can activate the retain flag by setting the third parameter to true)
+#ifdef debug
+    Serial.println("MQTT OK");
+#endif
+    return true;
+  } else {
+#ifdef debug
+    Serial.println("MQTT Error");
+#endif
+    return false;
   }
 }
 
-void loop()
-{
-  ArduinoOTA.handle();
-  Debug.handle();
-  MQTTClient.loop();
+void TaskMeasure (void * pvParameters) {
+  const TickType_t xFrequency = 10;
 
-  if (millis() - ntpUpdateTimer >= 2000) {
-    ntpUpdateTimer += 2000;
-
-    if (timeClient.getEpochTime() < 1500000000) {
-      debugE("not a valid time: %lu %s", timeClient.getEpochTime(), timeClient.getFormattedTime());
-      timeValid = false;
-    } else {
-      timeValid = true;
-    }
-
+  // Initialise the xLastWakeTime variable with the current time.
+  TickType_t xLastWakeTime = xTaskGetTickCount ();
+  for ( ;; )
+  {
+    // Wait for the next cycle.
+    vTaskDelayUntil( &xLastWakeTime, pdMS_TO_TICKS(5000) );
     if (timeValid) {
-      if (!timeClient.update()) {
-        debugE("update failed: %s", timeClient.getFormattedTime());
-      }
-    } else {
-      if (!timeClient.forceUpdate()) {
-        debugE("forceupdate failed: %s", timeClient.getFormattedTime());
-      }
-    }
-
-    if (!lastTimeValid && timeValid) {
-      debugE("Got new Time: %s", timeClient.getFormattedTime());
-    }
-    lastTimeValid = timeValid;
-  }
-
-  auto newActTime = millis();
-  if (newActTime - getDataTimer >= updateIntervall) {
-    getDataTimer += updateIntervall;
-
-    if (timeValid && MQTTClient.isConnected()) {
       measures[measureIndex].CO2 = myMHZ19.getCO2(false);                             // Request CO2 (as ppm)
+      measures[measureIndex].CO2Error = myMHZ19.errorCode;
       measures[measureIndex].CO2unlimited = myMHZ19.getCO2(true);                   // Request CO2 unlimited
+      measures[measureIndex].CO2unlimitedError = myMHZ19.errorCode;
       measures[measureIndex].CO2Raw = myMHZ19.getCO2Raw();
+      measures[measureIndex].CO2RawError = myMHZ19.errorCode;
       measures[measureIndex].Temp = myMHZ19.getTemperature(true);                    // Request Temperature as float (as Celsius)
+      measures[measureIndex].TempError = myMHZ19.errorCode;
       measures[measureIndex].Accuracy = myMHZ19.getAccuracy();
+      measures[measureIndex].AccuracyError = myMHZ19.errorCode;
 
       if (myMHZ19.errorCode != RESULT_OK) {
         debugE("Error from MHZ19: %u", myMHZ19.errorCode);
@@ -254,18 +332,94 @@ void loop()
       unsigned int ms = 0;
       measures[measureIndex].time = timeClient.getEpochTime(ms);
       measures[measureIndex].ms = ms;
-      measureIndex++;
-      debugV("Measure: %d",measureIndex);
-      if (measureIndex >= maxMeasurements) {
-        sendMeasurements();
-        measureIndex = 0;
+      incMeasureIndex();
+      debugV("Measure: %d", measureIndex);
+#ifdef debug
+      Serial.print("Measure");
+      Serial.println(measureIndex);
+#endif
+    }
+  }
+}
+
+void loop()
+{
+  MQTTClient.loop();
+  if (WiFi.status() == WL_CONNECTED) {
+    ArduinoOTA.handle();
+    Debug.handle();
+    if (millis() - ntpUpdateTimer >= 2000) {
+      ntpUpdateTimer += 2000;
+
+      if (timeClient.getEpochTime() < 1500000000) {
+        debugE("not a valid time: %lu %s", timeClient.getEpochTime(), timeClient.getFormattedTime());
+        timeValid = false;
+      } else {
+        timeValid = true;
       }
 
-    } else {
-      if (!timeValid) {
-        debugE("Time not valid: %s", timeClient.getFormattedTime());
+      if (timeValid) {
+        if (!timeClient.update()) {
+          debugE("update failed: %s", timeClient.getFormattedTime());
+        }
       } else {
-        debugE("MQTT not connected");
+        if (!timeClient.forceUpdate()) {
+          debugE("forceupdate failed: %s", timeClient.getFormattedTime());
+        }
+      }
+
+      if (!lastTimeValid && timeValid) {
+        debugE("Got new Time: %s", timeClient.getFormattedTime());
+      }
+      lastTimeValid = timeValid;
+    }
+
+    if (sendState == tostart) {
+      stoptime = millis() + 5000;
+      sendState = startdelay;
+    }
+    if (sendState == startdelay) {
+      if (millis() > stoptime) {
+        sendState = started;
+      }
+    }
+    if (sendState == started) {
+      if (MQTTClient.isConnected() && (countStoredMeasurements() > 0)) {
+#ifdef debug
+        Serial.print("StoredMeasurements: ");
+        Serial.println(countStoredMeasurements());
+#endif
+        sendMeasurement(sendMeasureIndex);
+        incSendMeasureIndex();
+      }
+    }
+  }
+  if ((sendState == stopped) && (countStoredMeasurements() > (maxMeasurements / 2))) {
+    sendState = tostart;
+#ifdef debug
+    Serial.println("StartSending");
+#endif
+    if (WiFi.status() != WL_CONNECTED) {
+      startWIFI();
+    }
+  }
+  if ((sendState == started) && (countStoredMeasurements() < 1)) {
+    if (timeValid) {
+      sendState = tostop;
+#ifdef debug
+      Serial.println("toStop");
+#endif
+      stoptime = millis() + 5000;
+    }
+  }
+  if (sendState == tostop) {
+    if (millis() > stoptime) {
+      sendState = stopped;
+#ifdef debug
+      Serial.println("StopSending");
+#endif
+      if (!disableSleep) {
+        stopWIFI();
       }
     }
   }
