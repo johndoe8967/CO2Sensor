@@ -4,7 +4,7 @@
   Once it connects successfully to a Wifi network and a MQTT broker, it subscribe to a topic and send a message to it.
   It will also send a message delayed 5 seconds later.
 */
-#define debug
+//#define debug
 
 #include "EspMQTTClient.h"
 #include <NTPClient.h>
@@ -16,15 +16,15 @@ TaskHandle_t Task1;
 
 typedef struct Measurements {
   float CO2;
-  char CO2Error;
+  int CO2Error;
   float CO2unlimited;
-  char CO2unlimitedError;
+  int CO2unlimitedError;
   float CO2Raw;
-  char CO2RawError;
+  int CO2RawError;
   float Temp;
-  char TempError;
+  int TempError;
   float Accuracy;
-  char AccuracyError;
+  int AccuracyError;
   unsigned long time;
   unsigned int ms;
 } Measurement;
@@ -110,7 +110,7 @@ void startWIFI() {
 #ifdef debug
   Serial.println("startWIFI");
 #endif
-  wifiInit();
+  wifiInit(false);
   IP_info();
 }
 
@@ -132,7 +132,7 @@ void setup()
 
   btStop();
 
-  wifiInit();       // get WiFi connected
+  wifiInit(true);       // get WiFi connected
   IP_info();
 
   setupOTA();
@@ -375,8 +375,8 @@ void loop()
       lastTimeValid = timeValid;
     }
 
-    if (sendState == tostart) {
-      stoptime = millis() + 5000;
+    if ((sendState == tostart) && MQTTClient.isConnected()) {
+      stoptime = millis() + 4000;
       sendState = startdelay;
     }
     if (sendState == startdelay) {
@@ -390,6 +390,7 @@ void loop()
         Serial.print("StoredMeasurements: ");
         Serial.println(countStoredMeasurements());
 #endif
+        delay(200);
         sendMeasurement(sendMeasureIndex);
         incSendMeasureIndex();
       }
@@ -410,7 +411,7 @@ void loop()
 #ifdef debug
       Serial.println("toStop");
 #endif
-      stoptime = millis() + 5000;
+      stoptime = millis() + 1000;
     }
   }
   if (sendState == tostop) {
