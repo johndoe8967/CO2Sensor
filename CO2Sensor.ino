@@ -4,13 +4,14 @@
   Once it connects successfully to a Wifi network and a MQTT broker, it subscribe to a topic and send a message to it.
   It will also send a message delayed 5 seconds later.
 */
+#define debug
+
 #include "EspMQTTClient.h"
 #include <NTPClient.h>
 #include "MHZ19.h"
 #include <ArduinoJson.h>
 #include "infrastructure.h"
 
-#define debug true
 TaskHandle_t Task1;
 
 typedef struct Measurements {
@@ -123,10 +124,9 @@ void stopWIFI() {
 
 void setup()
 {
-#ifdef debug
   Serial.begin(115200);
   Serial.println("Booting");
-#endif
+
   sendMeasureIndex = (measureIndex - 1) & ((1 << MeasureIndexBits) - 1);
   sendState = started;
 
@@ -144,8 +144,9 @@ void setup()
 
   Debug.setHelpProjectsCmds(cmds);
   Debug.setCallBackProjectCmds(&processCmdRemoteDebug);
-
-  MQTTClient.enableDebuggingMessages(debug); // Enable debugging messages sent to serial output
+#ifdef debug
+  MQTTClient.enableDebuggingMessages(true); // Enable debugging messages sent to serial output
+#endif
   MQTTClient.enableLastWillMessage("device/lastwill", MQTTClientName);
 
   // Setup MH-Z19 CO2 Sensor over serial interface

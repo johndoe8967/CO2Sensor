@@ -36,7 +36,7 @@
 #include <RemoteDebug.h>
 RemoteDebug Debug;
 void setupRemoteDebug(const char* hostname) {
-    Debug.begin(hostname);
+  Debug.begin(hostname);
 
 }
 #endif
@@ -62,81 +62,90 @@ Preferences preferences;  // declare class object
 
 
 // Requires; #include <esp_wifi.h>
-// Returns String NONE, ssid or pass arcording to request 
+// Returns String NONE, ssid or pass arcording to request
 // ie String var = getSsidPass( "pass" );
 String getSsidPass( String s )
 {
   String val = "NONE";  // return "NONE" if wrong key sent
   s.toUpperCase();
-  if( s.compareTo("SSID") == 0 )
+  if ( s.compareTo("SSID") == 0 )
   {
-     wifi_config_t conf;
-     esp_wifi_get_config( WIFI_IF_STA, &conf );
-     val = String( reinterpret_cast<const char*>(conf.sta.ssid) );
+    wifi_config_t conf;
+    esp_wifi_get_config( WIFI_IF_STA, &conf );
+    val = String( reinterpret_cast<const char*>(conf.sta.ssid) );
   }
-  if( s.compareTo("PASS") == 0 )
+  if ( s.compareTo("PASS") == 0 )
   {
-     wifi_config_t conf;
-     esp_wifi_get_config( WIFI_IF_STA, &conf );
-     val = String( reinterpret_cast<const char*>(conf.sta.password) );
+    wifi_config_t conf;
+    esp_wifi_get_config( WIFI_IF_STA, &conf );
+    val = String( reinterpret_cast<const char*>(conf.sta.password) );
   }
- return val;
+  return val;
 }
 
 // match WiFi IDs in NVS to Pref store,  assumes WiFi.mode(WIFI_AP_STA);  was executed
-bool checkPrefsStore()   
+bool checkPrefsStore()
 {
-    bool val = false;
-    String NVssid, NVpass, prefssid, prefpass;
+  bool val = false;
+  String NVssid, NVpass, prefssid, prefpass;
 
-    NVssid = getSsidPass( "ssid" );
-    NVpass = getSsidPass( "pass" );
+  NVssid = getSsidPass( "ssid" );
+  NVpass = getSsidPass( "pass" );
 
-    // Open Preferences with my-app namespace. Namespace name is limited to 15 chars
-    preferences.begin("wifi", false);
-        prefssid  =  preferences.getString("ssid", "none");     //NVS key ssid
-        prefpass  =  preferences.getString("password", "none"); //NVS key password
-    preferences.end();
+  // Open Preferences with my-app namespace. Namespace name is limited to 15 chars
+  preferences.begin("wifi", false);
+  prefssid  =  preferences.getString("ssid", "none");     //NVS key ssid
+  prefpass  =  preferences.getString("password", "none"); //NVS key password
+  preferences.end();
 
-    if( NVssid.equals(prefssid) && NVpass.equals(prefpass) )
-      { val = true; }
+  if ( NVssid.equals(prefssid) && NVpass.equals(prefpass) )
+  {
+    val = true;
+  }
 
   return val;
 }
 
 // optionally call this function any way you want in your own code
-// to remap WiFi to another AP using SmartConfig mode.   Button, condition etc.. 
-void initSmartConfig() 
+// to remap WiFi to another AP using SmartConfig mode.   Button, condition etc..
+void initSmartConfig()
 {
-   // start LED flasher
+  // start LED flasher
   int loopCounter = 0;
 
   WiFi.mode( WIFI_STA );       //Init WiFi, start SmartConfig
+#ifdef debug
   Serial.printf( "Entering SmartConfig\n" );
+#endif
 
   WiFi.beginSmartConfig();
 
-  while (!WiFi.smartConfigDone()) 
+  while (!WiFi.smartConfigDone())
   {
-     // flash led to indicate not configured
-     Serial.printf( "." );
-     if( loopCounter >= 40 )  // keep from scrolling sideways forever
-     {
-         loopCounter = 0;
-         Serial.printf( "\n" );
-     }
-     delay(600);
+    // flash led to indicate not configured
+#ifdef debug
+    Serial.printf( "." );
+#endif
+    if ( loopCounter >= 40 ) // keep from scrolling sideways forever
+    {
+      loopCounter = 0;
+#ifdef debug
+      Serial.printf( "\n" );
+#endif
+    }
+    delay(600);
     ++loopCounter;
   }
   loopCounter = 0;
 
   // stopped flasher here
+#ifdef debug
+  Serial.printf("\nSmartConfig received.\n Waiting for WiFi\n\n");
+#endif
+  delay(2000 );
 
-   Serial.printf("\nSmartConfig received.\n Waiting for WiFi\n\n");
-   delay(2000 );
-    
-  while( WiFi.status() != WL_CONNECTED )      // check till connected
-  { 
+  while ( WiFi.status() != WL_CONNECTED )     // check till connected
+  {
     delay(500);
   }
   IP_info();  // connected lets see IP info
@@ -149,69 +158,71 @@ void initSmartConfig()
   delay(300);
 }  // END SmartConfig()
 
-void wifiInit()  // 
+void wifiInit()  //
 {
-   WiFi.mode(WIFI_STA);   // required to read NVR before WiFi.begin()
+  WiFi.mode(WIFI_STA);   // required to read NVR before WiFi.begin()
 
-   // load credentials from NVR, a little RTOS code here
-   wifi_config_t conf;
-   esp_wifi_get_config(WIFI_IF_STA, &conf);  // load wifi settings to struct comf
-   rssiSSID = reinterpret_cast<const char*>(conf.sta.ssid);
-   password = reinterpret_cast<const char*>(conf.sta.password);
+  // load credentials from NVR, a little RTOS code here
+  wifi_config_t conf;
+  esp_wifi_get_config(WIFI_IF_STA, &conf);  // load wifi settings to struct comf
+  rssiSSID = reinterpret_cast<const char*>(conf.sta.ssid);
+  password = reinterpret_cast<const char*>(conf.sta.password);
 
-   // Open Preferences with "wifi" namespace. Namespace is limited to 15 chars
-   preferences.begin("wifi", false);
-   PrefSSID      =  preferences.getString("ssid", "none");      //NVS key ssid
-   PrefPassword  =  preferences.getString("password", "none");  //NVS key password
-   preferences.end();
+  // Open Preferences with "wifi" namespace. Namespace is limited to 15 chars
+  preferences.begin("wifi", false);
+  PrefSSID      =  preferences.getString("ssid", "none");      //NVS key ssid
+  PrefPassword  =  preferences.getString("password", "none");  //NVS key password
+  preferences.end();
 
-   // keep from rewriting flash if not needed
-   if( !checkPrefsStore() )      // see is NV and Prefs are the same
-   {              // not the same, setup with SmartConfig
-      if( PrefSSID == "none" )  // New...setup wifi
-      {
-        initSmartConfig(); 
-        delay( 3000);
-        ESP.restart();   // reboot with wifi configured
-      }
-   } 
+  // keep from rewriting flash if not needed
+  if ( !checkPrefsStore() )     // see is NV and Prefs are the same
+  { // not the same, setup with SmartConfig
+    if ( PrefSSID == "none" ) // New...setup wifi
+    {
+      initSmartConfig();
+      delay( 3000);
+      ESP.restart();   // reboot with wifi configured
+    }
+  }
 
-   // I flash LEDs while connecting here
+  // I flash LEDs while connecting here
 
-   WiFi.begin( PrefSSID.c_str() , PrefPassword.c_str() );
+  WiFi.begin( PrefSSID.c_str() , PrefPassword.c_str() );
 
-   int WLcount = 0;
-   while (WiFi.status() != WL_CONNECTED && WLcount < 200 ) // can take > 100 loops depending on router settings
-   {
-     delay( 100 );
-     Serial.printf(".");
-     ++WLcount;
-   }
-   if (WiFi.status() != WL_CONNECTED) {
-        initSmartConfig(); 
-        delay( 3000);
-        ESP.restart();   // reboot with wifi configured
-   }
+  int WLcount = 0;
+  while (WiFi.status() != WL_CONNECTED && WLcount < 600 ) // can take > 100 loops depending on router settings
+  {
+    delay( 100 );
+#ifdef debug
+    Serial.printf(".");
+#endif
+    ++WLcount;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    initSmartConfig();
+    delay( 3000);
+    ESP.restart();   // reboot with wifi configured
+  }
   delay( 3000 );
 
   //  stop the led flasher here
 
-  }  // END wifiInit()
+}  // END wifiInit()
 
 
 void IP_info()
 {
-   getSsid = WiFi.SSID();
-   getPass = WiFi.psk();
+  getSsid = WiFi.SSID();
+  getPass = WiFi.psk();
 
-   Serial.printf( "\n\n\tSSID\t%s\n", getSsid.c_str() );
-   Serial.printf( "\tPass\t %s\n", getPass.c_str() ); 
-   Serial.print( "\n\n\tIP address:\t" );  Serial.print(WiFi.localIP() );
-   Serial.print( " / " );
-   Serial.println( WiFi.subnetMask() );
-   Serial.print( "\tGateway IP:\t" );  Serial.println( WiFi.gatewayIP() );
-   Serial.print( "\t1st DNS:\t" );     Serial.println( WiFi.dnsIP() );
-   Serial.printf( "\tMAC:\t\t%s\n", MAC.c_str() );
+  Serial.printf( "\n\n\tSSID\t%s\n", getSsid.c_str() );
+  Serial.printf( "\tPass\t %s\n", getPass.c_str() );
+  Serial.print( "\n\n\tIP address:\t" );  Serial.print(WiFi.localIP() );
+  Serial.print( " / " );
+  Serial.println( WiFi.subnetMask() );
+  Serial.print( "\tGateway IP:\t" );  Serial.println( WiFi.gatewayIP() );
+  Serial.print( "\t1st DNS:\t" );     Serial.println( WiFi.dnsIP() );
+  Serial.printf( "\tMAC:\t\t%s\n", MAC.c_str() );
 }
 #endif
 
@@ -237,7 +248,7 @@ void setupOTA() {
     debugD("Start updating");
   })
   .onEnd([]() {
-    Serial.println("\nEnd"); 
+    Serial.println("\nEnd");
     debugD("\nEnd");
   })
   .onProgress([](unsigned int progress, unsigned int total) {
