@@ -76,7 +76,7 @@ function onMessageArrived(message) {
 		if (!devicelist.includes(deviceName)) {
 			//create new device on site
 			document.getElementById("devices").innerHTML += '<span>' + deviceName + '</span><br/>';
-			document.getElementById("devices").innerHTML += '<div id="'+deviceName+'"></div>';
+			document.getElementById("devices").innerHTML += '<div id="'+deviceName+'"></div><br/>';
 			var element = document.getElementById(deviceName);
 			element.classList.add("devices");
 
@@ -86,6 +86,14 @@ function onMessageArrived(message) {
 			// subscribe commands from new device
 			client.subscribe(deviceName + "/commands");
 			
+			// initiate getCommand on new device
+			if (document.getElementById("stayOnline").checked) {
+				var sendStayOnline = new Paho.MQTT.Message("{\"Debug\":true}");
+				sendStayOnline.destinationName = deviceName;
+				sendStayOnline.qos = 0;
+				client.send(sendStayOnline);				
+			}
+						
 			// initiate getCommand on new device
 			var getCommands = new Paho.MQTT.Message("getCommands");
 			getCommands.destinationName = deviceName;
